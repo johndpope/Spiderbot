@@ -1,7 +1,7 @@
 import pygame
 import threading
 from multiprocessing import Process, Queue
-from Queue import Event
+from Queue import Empty
 
 from camera import Camera
 from field import Field
@@ -33,7 +33,7 @@ camera = Camera()
 #t = threading.Thread(target=camera.start_capture)
 #t.start()
 camera_event_queue = Queue()
-t = Process(target=camera.start_captur, args=(camera_event_queue, ))
+t = Process(target=camera.start_capture, args=(camera_event_queue, ))
 t.start()
 print "going on"
 

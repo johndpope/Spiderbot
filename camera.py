@@ -216,7 +216,7 @@ class Camera:
     def start_capture(self, queue):
 
         # cap = cv2.VideoCapture('example.mp4')
-        cap = cv2.VideoCapture(0
+        cap = cv2.VideoCapture(0)
 
         # cv2.namedWindow('Trackbar', 1)
         # cv2.moveWindow('Trackbar', 20, 20)
