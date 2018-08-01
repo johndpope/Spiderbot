@@ -46,7 +46,7 @@ class PlayingField:
                     color = Field.BLACK
                 self.fields.append(Field(x, y, self.field_width, self.field_height, color))
 
-    def update_robot_position(self, robots, mutex):
+    def update_robot_position(self, robots):
         """
         check in which fields the robots are
         :param robots: Group of robots from camera
@@ -54,7 +54,7 @@ class PlayingField:
         :return: None
         """
         for field in self.fields:
-            field.is_robot_inside(robots, mutex)
+            field.is_robot_inside(robots)
 
     def update(self, win):
         """
