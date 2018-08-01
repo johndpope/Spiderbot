@@ -1,5 +1,7 @@
 import pygame
 import threading
+from multiprocessing import Process, Queue
+from Queue import Event
 
 from camera import Camera
 from field import Field
@@ -28,10 +30,14 @@ pf = PlayingField(854, 480)
 # via an event the coordinates of the robots
 camera = Camera()
 
-t = threading.Thread(target=camera.start_capture)
+#t = threading.Thread(target=camera.start_capture)
+#t.start()
+camera_event_queue = Queue()
+t = Process(target=camera.start_captur, args=(camera_event_queue, ))
 t.start()
 print "going on"
 
+win.fill(Field.BRIGHT)
 while run:
     # TODO: make the delay better, so that a constant frame rate is used -> pygame can do this
     pygame.time.delay(10)
@@ -67,10 +73,15 @@ while run:
             except Exception as e:
                 print "Exception while trying to update robot positin"
                 print e
+    
+    try:
+        robots = camera_event_queue.get(True, 0.1)
+        if robots:
+            pf.update_robot_position(robots)
+    except:
+        print "Empty Queue"
 
     # draw the screen
-    win.fill(Field.BRIGHT)
-
     pf.update(win)
     camera.update(win)
 

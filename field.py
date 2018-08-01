@@ -94,7 +94,7 @@ class Field(pygame.sprite.Sprite):
     def get_height(self):
         return self.rect.height
 
-    def is_robot_inside(self, robots, robot_mutex):
+    def is_robot_inside(self, robots):
         """
         Check if a robot is inside the field, and if so set the color and start the scent
 
@@ -104,10 +104,7 @@ class Field(pygame.sprite.Sprite):
         """
         # type: (pygame.sprite.Group(Robot)) -> bool
 
-        # lock the thread so that robot is not accessed simultaneously
-        robot_mutex.acquire()
         collision_list = pygame.sprite.spritecollide(self, robots, False)
-        robot_mutex.release()
         if len(collision_list) > 0:
             # Only if the robot enters the field, then the thread to manage the scent on this field starts
             if not self.robot_is_inside:

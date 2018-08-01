@@ -49,10 +49,11 @@ class Camera:
         self.MIN_OBJECT_AREA = 20 * 20
         self.objects = []
 
-    def send_event(self):
+    def send_event(self, queue):
         print "Camera is sending an event"
         try:
-            pygame.event.post(self.robot_found_event)
+            # pygame.event.post(self.robot_found_event)
+            queue.put(self.robots)
         except pygame.error:
             print "The Event queue is probably full"
         except Exception as e:
@@ -64,19 +65,19 @@ class Camera:
         self.stop_ev.set()
         self.robot_stops.set()
 
-    def run(self):
+    def run(self, queue):
         print "start"
         while not self.stop_ev.wait(0.1):
             print "wait"
-            if self.camera_found_robot_event.wait(0.1):
-                self.send_event()
-                try:
-                    if not self.robot_walks.is_alive():
-                        self.robot_walks.start()
-                except RuntimeError:
-                    del self.robot_walks
-                    self.robot_walks = threading.Thread(target=self.walking)
+            # if self.camera_found_robot_event.wait(0.1):
+            self.send_event(queue)
+            try:
+                if not self.robot_walks.is_alive():
                     self.robot_walks.start()
+            except RuntimeError:
+                del self.robot_walks
+                self.robot_walks = threading.Thread(target=self.walking)
+                self.robot_walks.start()
 
             # print "camera is running"
         print "stopped camera"
@@ -87,7 +88,6 @@ class Camera:
         while not self.robot_stops.wait(0.3):
             print "robot walks"
             print "mutex: ", self.robot_mutex.locked()
-            print dir(self.robot_mutex)
             ret = self.robot_mutex.acquire(True)
             print "acquired mutex", ret
             for robot in self.robots:
@@ -155,8 +155,8 @@ class Camera:
         """
         erode_kern = np.ones((3, 3), np.uint8)
         dilate_kern = np.ones((8, 8), np.uint8)
-        thresh = cv2.erode(thresh, erode_kern, thresh, iterations=2)
-        thresh = cv2.dilate(thresh, dilate_kern, thresh, iterations=2)
+        thresh = cv2.erode(thresh, erode_kern, thresh, iterations=1)
+        thresh = cv2.dilate(thresh, dilate_kern, thresh, iterations=1)
 
         return thresh
 
@@ -174,13 +174,13 @@ class Camera:
             contours, hierarchy = cv2.findContours(temp, cv2.RETR_CCOMP, cv2.CHAIN_APPROX_SIMPLE)
         # use moments method to find our filtered object
         self.objects = []
-        if hierarchy.shape[1] > 0:
+        self.robots.empty()
+        try: # if hierarchy.shape[1] > 0:
 
             num_objects = hierarchy.shape[1]
             # if number of objects greater than MAX_NUM_OBJECTS we have a noisy filter
             if num_objects < self.MAX_NUM_OBJECTS:
                 self.robot_mutex.acquire()
-                self.robots.empty()
                 for index in range(num_objects):
 
                     moment = cv2.moments(contours[index])
@@ -210,13 +210,25 @@ class Camera:
             else:
                 print "too much noise!"
                 cv2.putText(camera_feed, "TOO MUCH NOISE! ADJUST FILTER", (0, 50), 1, 2, (0, 0, 255), 2)
+        except:
+            print "did not find objects"
 
-    def start_capture(self):
+    def start_capture(self, queue):
 
-        cap = cv2.VideoCapture('example.mp4')
+        # cap = cv2.VideoCapture('example.mp4')
+        cap = cv2.VideoCapture(0
 
         # cv2.namedWindow('Trackbar', 1)
         # cv2.moveWindow('Trackbar', 20, 20)
+
+        # Kalibrierung #######
+        # cv2.createTrackbar('min_hue', 'Trackbar', self.min_hue, 255, self.set_min_hue)
+        # cv2.createTrackbar('max_hue', 'Trackbar', self.max_hue, 255, self.set_max_hue)
+        # cv2.createTrackbar('min_sat', 'Trackbar', self.min_sat, 255, self.set_min_sat)
+        # cv2.createTrackbar('max_sat', 'Trackbar', self.max_sat, 255, self.set_max_sat)
+        # cv2.createTrackbar('min_val', 'Trackbar', self.min_val, 255, self.set_min_val)
+        # cv2.createTrackbar('max_val', 'Trackbar', self.max_val, 255, self.set_max_val)
+        ########################
 
         # cv2.namedWindow('frame', flags=cv2.WINDOW_AUTOSIZE)
         # # cv2.resizeWindow('frame', 800, 400)
@@ -228,31 +240,28 @@ class Camera:
         # # cv2.resizeWindow('res', 800, 400)
         # cv2.moveWindow('res', 800, 400)
 
-        # cv2.createTrackbar('min_hue', 'Trackbar', self.min_hue, 255, self.set_min_hue)
-        # cv2.createTrackbar('max_hue', 'Trackbar', self.max_hue, 255, self.set_max_hue)
-        # cv2.createTrackbar('min_sat', 'Trackbar', self.min_sat, 255, self.set_min_sat)
-        # cv2.createTrackbar('max_sat', 'Trackbar', self.max_sat, 255, self.set_max_sat)
-        # cv2.createTrackbar('min_val', 'Trackbar', self.min_val, 255, self.set_min_val)
-        # cv2.createTrackbar('max_val', 'Trackbar', self.max_val, 255, self.set_max_val)
-
         # while True:
 
         while not self.stop_ev.wait(0.05):
             # if self.camera_found_robot_event.wait(0.05):
             ok, frame = cap.read()
             if ok:
-                frame = cv2.resize(frame, (640, 360), frame, 0, 0, cv2.INTER_CUBIC)
+                # frame = cv2.resize(frame, (640, 360), frame, 0, 0, cv2.INTER_CUBIC)
                 hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
 
                 mask = cv2.inRange(hsv, self.lower_color, self.upper_color)
                 mask = self.morph_ops(mask)
                 self.track_filtered_object(mask, frame)
                 # res = cv2.bitwise_and(frame, frame, mask=mask)
+                
+                # Kalibrierung
                 # cv2.imshow('frame', frame)
                 # cv2.imshow('mask', mask)
+                ############
+
                 # cv2.imshow('res', res)
 
-                self.send_event()
+                self.send_event(queue)
 
                 k = cv2.waitKey(5) & 0xff
                 if k == 27:
