@@ -1,90 +1,93 @@
 import pygame
 import threading
 from multiprocessing import Process, Queue
-from Queue import Empty
+from Queue import Empty as QueueEmptyError
 
+import camera
 from camera import Camera
+from simulator import Simulator
 from field import Field
 from playingfield import PlayingField
 
 # TODO: make this pretty, probably own class so that two processes can be spawned, important for raspbery pi
 
-print "start"
+# parameters
+# the resolution of the beamer is 854 * 480
+FIELD_WIDTH = 854
+FIELD_HEIGHT = 480
+simulation_mode = True
+draw_robots = True
 
 # initialize pygame -> our graphics tool
 pygame.init()
 
-# the resolution of the beamer is 854 * 480
-win = pygame.display.set_mode((854, 480))
+win = pygame.display.set_mode((FIELD_WIDTH, FIELD_HEIGHT))
 
-pygame.display.set_caption("Chantys Spiderbot")
-pygame.key.set_repeat(50, 50)  # so that a pressed key is recognized multiple times
+pygame.display.set_caption("Spiderbot")
+pygame.key.set_repeat(50, 50)
 
 # global run state, program will run as long as this is set to True
 run = True
 
 # initialize the playingfield
-pf = PlayingField(854, 480)
+pf = PlayingField(FIELD_WIDTH, FIELD_HEIGHT, draw_robots=draw_robots)
 
-# initialize the camera At this point, any other object can be initialized and hooked up to the program, which sends
-# via an event the coordinates of the robots
-camera = Camera()
+# initialize the eventhandler
+eventhandler = Simulator() if simulation_mode else Camera()
+if not simulation_mode:
+    t = Process(target=camera.start_capture, args=(camera_event_queue, ))
+    t.start()
 
-#t = threading.Thread(target=camera.start_capture)
-#t.start()
-camera_event_queue = Queue()
-t = Process(target=camera.start_capture, args=(camera_event_queue, ))
-t.start()
-print "going on"
+event_queue = Queue()
 
 win.fill(Field.BRIGHT)
 while run:
     # TODO: make the delay better, so that a constant frame rate is used -> pygame can do this
     pygame.time.delay(10)
+
     # check for pygame events, like keys and user events
     for event in pygame.event.get():
-        if event.type == pygame.QUIT:
+        if (event.type == pygame.QUIT
+            or (event.type == pygame.KEYDOWN and event.key == pygame.K_q)):
+            # press Q or close pygame window to stop program
             run = False
-            camera.stop_camera()
+            eventhandler.stop()
             pf.stop_threads()
-        if event.type == pygame.KEYDOWN:
-            # most important key combination -> STRG + q to quit the program
-            if event.key == pygame.K_q and pygame.key.get_mods() & pygame.KMOD_LCTRL:
-                run = False
-                camera.stop_camera()
-                pf.stop_threads()
-            if event.key == pygame.K_r:
-                # used to start the artificial robots for testing
-                print "pressed "r""
-                camera.camera_found_robot_event.set()
-            # these are no longer used, but we leave them, could be useful for debugging
-            if event.key == pygame.K_LEFT:
-                camera.cross[0] -= 5
-            if event.key == pygame.K_RIGHT:
-                camera.cross[0] += 5
-            if event.key == pygame.K_UP:
-                camera.cross[1] -= 5
-            if event.key == pygame.K_DOWN:
-                camera.cross[1] += 5
+        elif event.type == pygame.KEYDOWN:
+            # press R for running simulation
+            if simulation_mode:
+                if event.key == pygame.K_r:
+                    eventhandler_run_thread = threading.Thread(
+                        target=eventhandler.run, args=[event_queue])
+                    eventhandler_run_thread.start()
+            else:
+                # these are no longer used, but we leave them, could be useful for debugging
+                if event.key == pygame.K_LEFT:
+                    eventhandler.cross[0] -= 5
+                if event.key == pygame.K_RIGHT:
+                    eventhandler.cross[0] += 5
+                if event.key == pygame.K_UP:
+                    eventhandler.cross[1] -= 5
+                if event.key == pygame.K_DOWN:
+                    eventhandler.cross[1] += 5
+
+        # TODO is this block still needed? possibly remove it
         # We wait for this user event from camera, it contains the robot positions, so the playingfield can process them
-        if event.type == pygame.USEREVENT:
-            try:
-                pf.update_robot_position(event.robots, event.robot_mutex)
-            except Exception as e:
-                print "Exception while trying to update robot positin"
-                print e
-    
+        elif event.type == pygame.USEREVENT:
+            print('>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>')
+            1/0
+            pf.update_robot_position(event.robots, event.robot_mutex)
+
     try:
-        robots = camera_event_queue.get(True, 0.1)
+        robots = event_queue.get(True, 0.1)
         if robots:
             pf.update_robot_position(robots)
-    except:
-        print "Empty Queue"
+    except QueueEmptyError:
+        pass
 
     # draw the screen
     pf.update(win)
-    camera.update(win)
-
     pygame.display.update()
 
 pygame.quit()
+print "done"
