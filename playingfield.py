@@ -4,16 +4,19 @@ from field import Field
 
 
 class PlayingField:
-    """The PLayingField defines the complete field.
+    """The PlayingField defines the complete field.
     It waits for Events and add changes to the rooms"""
 
     fields = []  # type: List[Field]
 
-    # an array of field-numbers where the food and queen fields are
-    green_fields = [[1, 3], [5, 5], [10, 10]]
-    queen_fields = [[10, 5]]
+    def __init__(self, width, height, draw_robots=False,
+                 green_fields=((1, 3), (5, 5), (10, 10)),
+                 queen_fields=((10, 5),)):
 
-    def __init__(self, width, height):
+        self.draw_robots = draw_robots
+        self.green_fields = list([list(field) for field in green_fields])
+        self.queen_fields = list([list(field) for field in queen_fields])
+
         # Beamer area is 854 x 480
         self.width = width
         self.height = height
@@ -23,6 +26,8 @@ class PlayingField:
         # calculate the field width and height from the numbers of the complete playingfield
         self.field_width = self.width / self.number_of_fields_x
         self.field_height = self.height / self.number_of_fields_y
+
+        self.robots = []
 
         self.create_fields()
 
@@ -48,13 +53,14 @@ class PlayingField:
 
     def update_robot_position(self, robots):
         """
-        check in which fields the robots are
+        check in which fields the robots are to set new trails
         :param robots: Group of robots from camera
         :param mutex: lock object for thread safety
         :return: None
         """
         for field in self.fields:
-            field.is_robot_inside(robots)
+            field.check_if_robot_inside(robots)
+        self.robots = robots
 
     def update(self, win):
         """
@@ -62,16 +68,12 @@ class PlayingField:
         :param win: window from pygame
         :return: None
         """
-        # go through every field and draw it with the correct color
         for field in self.fields:
-            try:
-                pygame.draw.rect(win, field.color, field.rect, 0)
-                if field.robot_is_inside:
-                    pygame.draw.circle(win, Field.RED, (field.rect.x, field.rect.y), 5, 3)
+            pygame.draw.rect(win, field.color, field.rect, 0)
 
-            except Exception as e:
-                print e
-                print field.color
+        if self.draw_robots:
+            for robot in self.robots:
+                pygame.draw.rect(win, Field.VIOLET, robot.rect, 0)
 
     def stop_threads(self):
         print "Trying to stop scent threads"

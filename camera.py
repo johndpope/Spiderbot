@@ -23,7 +23,7 @@ class Camera:
     def __init__(self):
         self.stop_ev = threading.Event()  # This event is fired if the threads should stop e.g. end of program
         self.camera_found_robot_event = threading.Event()  # for testing, can be fired to start "walking"
-        self.robot_mutex = threading.Lock()  # a ock object, so that robots is Threadsafe
+        self.robot_mutex = threading.Lock()  # a lock object, so that robots is Threadsafe
         print "initilaizing Camera"
         # a pygame event, fired when robots are found, and contains the robots -> not sure if mutex is needed anymore
         self.robot_found_event = pygame.event.Event(pygame.USEREVENT, robots=self.robots, robot_mutex=self.robot_mutex)
@@ -61,7 +61,7 @@ class Camera:
         finally:
             self.camera_found_robot_event.clear()
 
-    def stop_camera(self):
+    def stop(self):
         self.stop_ev.set()
         self.robot_stops.set()
 
@@ -105,10 +105,6 @@ class Camera:
                     print e
                 break
             counter += 1
-
-    def update(self, win):
-        for robot in self.robots:
-            pygame.draw.rect(win, Field.VIOLET, robot.rect, 0)
 
     def set_min_hue(self, value):
         self.min_hue = value
@@ -253,7 +249,7 @@ class Camera:
                 mask = self.morph_ops(mask)
                 self.track_filtered_object(mask, frame)
                 # res = cv2.bitwise_and(frame, frame, mask=mask)
-                
+
                 # Kalibrierung
                 # cv2.imshow('frame', frame)
                 # cv2.imshow('mask', mask)
