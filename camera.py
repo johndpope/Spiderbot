@@ -1,14 +1,13 @@
 from copy import copy
-
 import cv2
 import pygame
 import threading
-
 import numpy as np
 
-from field import Field
 from robot import Robot
 from Queue import Empty as QueueEmptyError
+from colorfilter import ColorFilter
+
 
 class Camera:
     """
@@ -17,6 +16,8 @@ class Camera:
     """
     cross = [200, 200]  # for testing
     # This is the Group that holds all robots. This is used in other classes e.g. to check for collisions with fields
+    robots_carry = pygame.sprite.Group()
+    robots_no_carry = pygame.sprite.Group()
     robots = pygame.sprite.Group()
 
     # noinspection PyArgumentList
@@ -36,21 +37,13 @@ class Camera:
 
         # Variables needed for tracking
         # they hold the maximum and minimum values for hue, saturation and value (HSV) for the colorfilter
-        with open('colorfilter') as f:
-            color_input = f.read()
-            color_input = color_input.split(" ")
-            self.min_hue = int(color_input[0])
-            self.max_hue = int(color_input[1])
-            self.min_sat = int(color_input[2])
-            self.max_sat = int(color_input[3])
-            self.min_val = int(color_input[4])
-            self.max_val = int(color_input[5])
-        self.lower_color = np.array([self.min_hue, self.min_sat, self.min_val])
-        self.upper_color = np.array([self.max_hue, self.max_sat, self.max_val])
+        self.colorfilter_no_carry = ColorFilter("colorfilter_no_carry", "orange")
+        self.colorfilter_carry = ColorFilter("colorfilter_carry", "blue")
+
         self.MAX_NUM_OBJECTS = 10  # if the number of found objects exceeds this, then we declare too much noise
         self.MIN_OBJECT_AREA = 20 * 20
         self.objects = []
-        self.debug = True
+        self.debug = False
 
     def send_event(self, event_queue):
         print "Camera is sending an event"
@@ -109,42 +102,6 @@ class Camera:
                 break
             counter += 1
 
-    def set_min_hue(self, value):
-        self.min_hue = value
-        self.update_colorfilter()
-
-    def set_max_hue(self, value):
-        self.max_hue = value
-        self.update_colorfilter()
-
-    def set_min_sat(self, value):
-        self.min_sat = value
-        self.update_colorfilter()
-
-    def set_max_sat(self, value):
-        self.max_sat = value
-        self.update_colorfilter()
-
-    def set_min_val(self, value):
-        self.min_val = value
-        self.update_colorfilter()
-
-    def set_max_val(self, value):
-        self.max_val = value
-        self.update_colorfilter()
-
-    def update_colorfilter(self):
-        with open('colorfilter', 'w') as f:
-            out = str(self.min_hue) + " " + \
-                  str(self.max_hue) + " " + \
-                  str(self.min_sat) + " " + \
-                  str(self.max_sat) + " " + \
-                  str(self.min_val) + " " + \
-                  str(self.max_val)
-            f.write(out)
-        self.lower_color = np.array([self.min_hue, self.min_sat, self.min_val])
-        self.upper_color = np.array([self.max_hue, self.max_sat, self.max_val])
-
     @staticmethod
     def morph_ops(thresh):
         """
@@ -163,7 +120,7 @@ class Camera:
         for obj in self.objects:
             cv2.circle(frame, (obj[0], obj[1]), 20, (0, 255, 0))
 
-    def track_filtered_object(self, threshold, camera_feed):
+    def track_filtered_object(self, threshold, robot_list, scent, camera_feed):
 
         temp = copy(threshold)
         # find contours of filtered image using openCV findContours function
@@ -173,7 +130,7 @@ class Camera:
             contours, hierarchy = cv2.findContours(temp, cv2.RETR_CCOMP, cv2.CHAIN_APPROX_SIMPLE)
         # use moments method to find our filtered object
         self.objects = []
-        self.robots.empty()
+        robot_list.empty()
         try:  # if hierarchy.shape[1] > 0:
 
             first = True
@@ -193,16 +150,9 @@ class Camera:
                     if area > self.MIN_OBJECT_AREA:
                         # print "found position: ", moment['m10'], " + ", moment['m01']
                         # will be used for calibration
-                        self.objects.append([int(moment['m10']/area), int(moment['m01']/area)])
-                        if first:
-                            self.robots.add(
-                                Robot(int(moment['m10'] / area), int(moment['m01'] / area), width=20, height=20,
-                                      scent='orange'))
-                            first = False
-                        else:
-                            self.robots.add(
-                                Robot(int(moment['m10'] / area), int(moment['m01'] / area), width=20, height=20,
-                                      scent='blue'))
+                        self.objects.append([int(moment['m10'] / area), int(moment['m01'] / area)])
+                        robot_list.add(Robot(int(moment['m10'] / area), int(moment['m01'] / area), width=20, height=20,
+                                             scent=scent))
 
                         object_found = True
 
@@ -228,30 +178,33 @@ class Camera:
 
         if self.debug:
             # Kalibrierung #######
-            cv2.namedWindow('Trackbar', 1)
-            cv2.moveWindow('Trackbar', 20, 20)
+            cv2.namedWindow('Trackbar_no_carry', 1)
+            cv2.moveWindow('Trackbar_no_carry', 20, 20)
 
-            cv2.createTrackbar('min_hue', 'Trackbar', self.min_hue, 255, self.set_min_hue)
-            cv2.createTrackbar('max_hue', 'Trackbar', self.max_hue, 255, self.set_max_hue)
-            cv2.createTrackbar('min_sat', 'Trackbar', self.min_sat, 255, self.set_min_sat)
-            cv2.createTrackbar('max_sat', 'Trackbar', self.max_sat, 255, self.set_max_sat)
-            cv2.createTrackbar('min_val', 'Trackbar', self.min_val, 255, self.set_min_val)
-            cv2.createTrackbar('max_val', 'Trackbar', self.max_val, 255, self.set_max_val)
+            cv2.namedWindow('Trackbar_carry', 1)
+            cv2.moveWindow('Trackbar_carry', 400, 20)
+
+            self.colorfilter_no_carry.createTrackbar('Trackbar_no_carry')
+            self.colorfilter_carry.createTrackbar('Trackbar_carry')
+
             ########################
 
             cv2.namedWindow('frame', flags=cv2.WINDOW_AUTOSIZE)
             cv2.moveWindow('frame', 20, 400)
-            cv2.namedWindow('mask', flags=cv2.WINDOW_AUTOSIZE)
-            cv2.moveWindow('mask', 800, 20)
+            cv2.namedWindow('mask_carry', flags=cv2.WINDOW_AUTOSIZE)
+            cv2.moveWindow('mask_carry', 800, 20)
+            cv2.namedWindow('mask_no_carry', flags=cv2.WINDOW_AUTOSIZE)
+            cv2.moveWindow('mask_no_carry', 800, 400)
 
             if self.capture_source != '0':
                 cv2.resizeWindow('frame', 800, 400)
-                cv2.resizeWindow('mask', 800, 400)
+                cv2.resizeWindow('mask_carry', 800, 400)
+                cv2.resizeWindow('mask_no_carry', 800, 400)
         # cv2.namedWindow('res', flags=cv2.WINDOW_AUTOSIZE)
         # # cv2.resizeWindow('res', 800, 400)
         # cv2.moveWindow('res', 800, 400)
 
-        while True:  #not self.stop_ev.wait(0.05):
+        while True:  # not self.stop_ev.wait(0.05):
             # if self.camera_found_robot_event.wait(0.05):
             ok, frame = cap.read()
             if ok:
@@ -260,19 +213,28 @@ class Camera:
 
                 hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
 
-                mask = cv2.inRange(hsv, self.lower_color, self.upper_color)
-                mask = self.morph_ops(mask)
-                self.track_filtered_object(mask, frame)
+                mask_carry = cv2.inRange(hsv, self.colorfilter_carry.lower_color, self.colorfilter_carry.upper_color)
+                mask_carry = self.morph_ops(mask_carry)
+                self.track_filtered_object(mask_carry, self.robots_carry, self.colorfilter_carry.scent, frame)
+
+                mask_no_carry = cv2.inRange(hsv, self.colorfilter_no_carry.lower_color,
+                                            self.colorfilter_no_carry.upper_color)
+                mask_no_carry = self.morph_ops(mask_no_carry)
+                self.track_filtered_object(mask_no_carry, self.robots_no_carry, self.colorfilter_no_carry.scent, frame)
                 # res = cv2.bitwise_and(frame, frame, mask=mask)
 
                 if self.debug:
                     # Kalibrierung
                     cv2.imshow('frame', frame)
-                    cv2.imshow('mask', mask)
+                    cv2.imshow('mask_carry', mask_carry)
+                    cv2.imshow('mask_no_carry', mask_no_carry)
                     ############
 
                 # cv2.imshow('res', res)
 
+                self.robots.empty()
+                self.robots.add(self.robots_carry)
+                self.robots.add(self.robots_no_carry)
                 self.send_event(queue)
 
                 k = cv2.waitKey(5) & 0xff

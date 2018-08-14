@@ -35,7 +35,7 @@ pf = PlayingField(FIELD_WIDTH, FIELD_HEIGHT, draw_robots=draw_robots)
 # initialize the eventhandler
 event_queue = Queue()
 stop_queue = Queue()
-eventhandler = Simulator() if simulation_mode else Camera('example.mp4')
+eventhandler = Simulator() if simulation_mode else Camera('example_video_2.mp4')
 if not simulation_mode:
     t = Process(target=eventhandler.start_capture, args=(event_queue,stop_queue))
     t.start()
