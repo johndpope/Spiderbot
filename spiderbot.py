@@ -15,7 +15,7 @@ from playingfield import PlayingField
 # the resolution of the beamer is 854 * 480
 FIELD_WIDTH = 854
 FIELD_HEIGHT = 480
-simulation_mode = True
+simulation_mode = False
 draw_robots = True
 
 # initialize pygame -> our graphics tool
@@ -33,12 +33,12 @@ run = True
 pf = PlayingField(FIELD_WIDTH, FIELD_HEIGHT, draw_robots=draw_robots)
 
 # initialize the eventhandler
-eventhandler = Simulator() if simulation_mode else Camera()
-if not simulation_mode:
-    t = Process(target=camera.start_capture, args=(camera_event_queue, ))
-    t.start()
-
 event_queue = Queue()
+stop_queue = Queue()
+eventhandler = Simulator() if simulation_mode else Camera('example.mp4')
+if not simulation_mode:
+    t = Process(target=eventhandler.start_capture, args=(event_queue,stop_queue))
+    t.start()
 
 win.fill(Field.BRIGHT)
 while run:
@@ -48,17 +48,18 @@ while run:
     # check for pygame events, like keys and user events
     for event in pygame.event.get():
         if (event.type == pygame.QUIT
-            or (event.type == pygame.KEYDOWN and event.key == pygame.K_q)):
+                or (event.type == pygame.KEYDOWN and event.key == pygame.K_q)):
             # press Q or close pygame window to stop program
             run = False
             eventhandler.stop()
             pf.stop_threads()
+            stop_queue.put(True)  # tell camera to stop
         elif event.type == pygame.KEYDOWN:
             # press R for running simulation
             if simulation_mode:
                 if event.key == pygame.K_r:
                     eventhandler_run_thread = threading.Thread(
-                        target=eventhandler.run, args=[event_queue])
+                        target=eventhandler.run, args=[event_queue, stop_queue])
                     eventhandler_run_thread.start()
             else:
                 # these are no longer used, but we leave them, could be useful for debugging
@@ -75,7 +76,7 @@ while run:
         # We wait for this user event from camera, it contains the robot positions, so the playingfield can process them
         elif event.type == pygame.USEREVENT:
             print('>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>')
-            1/0
+            1 / 0
             pf.update_robot_position(event.robots, event.robot_mutex)
 
     try:

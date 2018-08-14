@@ -55,6 +55,8 @@ class Field(pygame.sprite.Sprite):
         self.scent_color = None
         self.scent_magnitude = 0
 
+        self.robot_is_inside = False
+
         # This thread starts running if a robot enters the field, so that the decay of the color starts
         # => the "color" is equvalent to the "scent"
         self.scent_t = threading.Thread(target=self.scent)
@@ -100,14 +102,17 @@ class Field(pygame.sprite.Sprite):
 
         collisions = pygame.sprite.spritecollide(self, robots, False)
         if not collisions:
+            self.robot_is_inside = False
             return False
         # TODO this case should be handled
         if len(collisions) > 1:
             raise ValueError('More than 1 robot in this field!')
         scent = collisions[0].is_releasing_scent()
         if scent is not None and not self.protected:
-            self.add_scent(scent)
-            self.start_scent(scent)
+            if not self.robot_is_inside:
+                self.add_scent(scent)
+                self.start_scent(scent)
+                self.robot_is_inside = True
         return True
 
     def set_color(self, color):
@@ -118,10 +123,12 @@ class Field(pygame.sprite.Sprite):
         """Thread to manage the scent on this field"""
         while (not self.scent_stop.wait(self.scent_decay_time)
                and self.color != self.WHITE):
-            self.decrease_scent_magnitude()
+            if not self.robot_is_inside:
+                self.decrease_scent_magnitude()
         self.color = self.WHITE
         self.scent_magnitude = 0
         self.scent_color = None
+        print "Thread is dead"
 
     def stop_scent(self):
         self.scent_stop.set()
@@ -148,7 +155,6 @@ class Field(pygame.sprite.Sprite):
             0, self.scent_magnitude - self.scent_decay_amount)
         self.update_color()
 
-
     def add_scent(self, scent):
         """Adds scent to current scent."""
         if self.scent_color == scent:
@@ -172,6 +178,8 @@ class Field(pygame.sprite.Sprite):
         :param scent: scent that is released by current robot
         :return: None
         """
+
+
         try:
             if not self.scent_t.is_alive():
                 self.scent_t.start()

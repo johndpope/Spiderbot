@@ -8,7 +8,7 @@ import numpy as np
 
 from field import Field
 from robot import Robot
-
+from Queue import Empty as QueueEmptyError
 
 class Camera:
     """
@@ -20,7 +20,9 @@ class Camera:
     robots = pygame.sprite.Group()
 
     # noinspection PyArgumentList
-    def __init__(self):
+    def __init__(self, capture_source):
+        self.capture_source = capture_source
+
         self.stop_ev = threading.Event()  # This event is fired if the threads should stop e.g. end of program
         self.camera_found_robot_event = threading.Event()  # for testing, can be fired to start "walking"
         self.robot_mutex = threading.Lock()  # a lock object, so that robots is Threadsafe
@@ -48,12 +50,13 @@ class Camera:
         self.MAX_NUM_OBJECTS = 10  # if the number of found objects exceeds this, then we declare too much noise
         self.MIN_OBJECT_AREA = 20 * 20
         self.objects = []
+        self.debug = True
 
-    def send_event(self, queue):
+    def send_event(self, event_queue):
         print "Camera is sending an event"
         try:
             # pygame.event.post(self.robot_found_event)
-            queue.put(self.robots)
+            event_queue.put(self.robots)
         except pygame.error:
             print "The Event queue is probably full"
         except Exception as e:
@@ -151,8 +154,8 @@ class Camera:
         """
         erode_kern = np.ones((3, 3), np.uint8)
         dilate_kern = np.ones((8, 8), np.uint8)
-        thresh = cv2.erode(thresh, erode_kern, thresh, iterations=1)
-        thresh = cv2.dilate(thresh, dilate_kern, thresh, iterations=1)
+        thresh = cv2.erode(thresh, erode_kern, thresh, iterations=2)
+        thresh = cv2.dilate(thresh, dilate_kern, thresh, iterations=2)
 
         return thresh
 
@@ -171,8 +174,9 @@ class Camera:
         # use moments method to find our filtered object
         self.objects = []
         self.robots.empty()
-        try: # if hierarchy.shape[1] > 0:
+        try:  # if hierarchy.shape[1] > 0:
 
+            first = True
             num_objects = hierarchy.shape[1]
             # if number of objects greater than MAX_NUM_OBJECTS we have a noisy filter
             if num_objects < self.MAX_NUM_OBJECTS:
@@ -190,7 +194,15 @@ class Camera:
                         # print "found position: ", moment['m10'], " + ", moment['m01']
                         # will be used for calibration
                         self.objects.append([int(moment['m10']/area), int(moment['m01']/area)])
-                        self.robots.add(Robot(int(moment['m10'] / area), int(moment['m01'] / area)))
+                        if first:
+                            self.robots.add(
+                                Robot(int(moment['m10'] / area), int(moment['m01'] / area), width=20, height=20,
+                                      scent='orange'))
+                            first = False
+                        else:
+                            self.robots.add(
+                                Robot(int(moment['m10'] / area), int(moment['m01'] / area), width=20, height=20,
+                                      scent='blue'))
 
                         object_found = True
 
@@ -209,40 +221,43 @@ class Camera:
         except:
             print "did not find objects"
 
-    def start_capture(self, queue):
+    def start_capture(self, queue, stop_queue):
 
-        # cap = cv2.VideoCapture('example.mp4')
-        cap = cv2.VideoCapture(0)
+        cap = cv2.VideoCapture(self.capture_source)
+        # cap = cv2.VideoCapture(0)
 
-        # cv2.namedWindow('Trackbar', 1)
-        # cv2.moveWindow('Trackbar', 20, 20)
+        if self.debug:
+            # Kalibrierung #######
+            cv2.namedWindow('Trackbar', 1)
+            cv2.moveWindow('Trackbar', 20, 20)
 
-        # Kalibrierung #######
-        # cv2.createTrackbar('min_hue', 'Trackbar', self.min_hue, 255, self.set_min_hue)
-        # cv2.createTrackbar('max_hue', 'Trackbar', self.max_hue, 255, self.set_max_hue)
-        # cv2.createTrackbar('min_sat', 'Trackbar', self.min_sat, 255, self.set_min_sat)
-        # cv2.createTrackbar('max_sat', 'Trackbar', self.max_sat, 255, self.set_max_sat)
-        # cv2.createTrackbar('min_val', 'Trackbar', self.min_val, 255, self.set_min_val)
-        # cv2.createTrackbar('max_val', 'Trackbar', self.max_val, 255, self.set_max_val)
-        ########################
+            cv2.createTrackbar('min_hue', 'Trackbar', self.min_hue, 255, self.set_min_hue)
+            cv2.createTrackbar('max_hue', 'Trackbar', self.max_hue, 255, self.set_max_hue)
+            cv2.createTrackbar('min_sat', 'Trackbar', self.min_sat, 255, self.set_min_sat)
+            cv2.createTrackbar('max_sat', 'Trackbar', self.max_sat, 255, self.set_max_sat)
+            cv2.createTrackbar('min_val', 'Trackbar', self.min_val, 255, self.set_min_val)
+            cv2.createTrackbar('max_val', 'Trackbar', self.max_val, 255, self.set_max_val)
+            ########################
 
-        # cv2.namedWindow('frame', flags=cv2.WINDOW_AUTOSIZE)
-        # # cv2.resizeWindow('frame', 800, 400)
-        # cv2.moveWindow('frame', 20, 400)
-        # cv2.namedWindow('mask', flags=cv2.WINDOW_AUTOSIZE)
-        # # cv2.resizeWindow('mask', 800, 400)
-        # cv2.moveWindow('mask', 800, 20)
+            cv2.namedWindow('frame', flags=cv2.WINDOW_AUTOSIZE)
+            cv2.moveWindow('frame', 20, 400)
+            cv2.namedWindow('mask', flags=cv2.WINDOW_AUTOSIZE)
+            cv2.moveWindow('mask', 800, 20)
+
+            if self.capture_source != '0':
+                cv2.resizeWindow('frame', 800, 400)
+                cv2.resizeWindow('mask', 800, 400)
         # cv2.namedWindow('res', flags=cv2.WINDOW_AUTOSIZE)
         # # cv2.resizeWindow('res', 800, 400)
         # cv2.moveWindow('res', 800, 400)
 
-        # while True:
-
-        while not self.stop_ev.wait(0.05):
+        while True:  #not self.stop_ev.wait(0.05):
             # if self.camera_found_robot_event.wait(0.05):
             ok, frame = cap.read()
             if ok:
-                # frame = cv2.resize(frame, (640, 360), frame, 0, 0, cv2.INTER_CUBIC)
+                if self.capture_source != '0':
+                    frame = cv2.resize(frame, (640, 360), frame, 0, 0, cv2.INTER_CUBIC)
+
                 hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
 
                 mask = cv2.inRange(hsv, self.lower_color, self.upper_color)
@@ -250,10 +265,11 @@ class Camera:
                 self.track_filtered_object(mask, frame)
                 # res = cv2.bitwise_and(frame, frame, mask=mask)
 
-                # Kalibrierung
-                # cv2.imshow('frame', frame)
-                # cv2.imshow('mask', mask)
-                ############
+                if self.debug:
+                    # Kalibrierung
+                    cv2.imshow('frame', frame)
+                    cv2.imshow('mask', mask)
+                    ############
 
                 # cv2.imshow('res', res)
 
@@ -264,6 +280,13 @@ class Camera:
                     break
             else:
                 break
+
+            try:
+                stop_event = stop_queue.get(True, 0.05)
+                if stop_event:
+                    break
+            except QueueEmptyError:
+                pass
 
         cv2.destroyAllWindows()
         cap.release()

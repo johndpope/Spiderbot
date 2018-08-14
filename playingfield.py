@@ -59,7 +59,10 @@ class PlayingField:
         :return: None
         """
         for field in self.fields:
-            field.check_if_robot_inside(robots)
+            try:
+                field.check_if_robot_inside(robots)
+            except ValueError:
+                pass
         self.robots = robots
 
     def update(self, win):
