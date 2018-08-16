@@ -42,7 +42,7 @@ class Simulator:
         self.stop_ev.set()
         self.robot_stops.set()
 
-    def run(self, queue):
+    def run(self, queue, stop_queue):
         if not self.robot_walks.is_alive():
             print ">> start simulation <<"
 
